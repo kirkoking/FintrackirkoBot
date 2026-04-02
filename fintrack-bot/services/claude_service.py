@@ -97,34 +97,38 @@ def _call_text_extraction(source_hint: str, text: str, user_comment: str = "") -
 
 
 def parse_image(base64_image: str, user_comment: str = "") -> dict:
-    client = _get_client()
-    system_prompt = _build_extraction_prompt("receipt or boleta image")
-
-    image_payload = {
-        "type": "image",
-        "source": {
-            "type": "base64",
-            "media_type": "image/jpeg",
-            "data": base64_image,
-        },
-    }
-
-    user_blocks: list[dict[str, Any]] = [image_payload]
-    if user_comment:
-        user_blocks.append({"type": "text", "text": f"User comment/context: {user_comment}"})
-
     try:
+        client = _get_client()
+        system_prompt = _build_extraction_prompt("receipt or boleta image")
+
+        normalized_base64 = base64_image.strip()
+        if normalized_base64.startswith("data:") and "base64," in normalized_base64:
+            normalized_base64 = normalized_base64.split("base64,", 1)[1].strip()
+
+        image_payload = {
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": "image/jpeg",
+                "data": normalized_base64,
+            },
+        }
+
+        user_blocks: list[dict[str, Any]] = [image_payload]
+        if user_comment:
+            user_blocks.append({"type": "text", "text": f"User comment/context: {user_comment}"})
+
         response = client.messages.create(
-            model=MODEL_NAME,
+            model="claude-sonnet-4-20250514",
             max_tokens=2000,
             system=system_prompt,
             messages=[{"role": "user", "content": user_blocks}],
         )
-    except Exception as exc:
-        logger.exception("Claude API error while parsing image")
-        raise RuntimeError("Failed to parse image with Claude API.") from exc
 
-    return {"transactions": _parse_json_array(_extract_text_content(response))}
+        return {"transactions": _parse_json_array(_extract_text_content(response))}
+    except Exception as exc:
+        logger.exception("Failed to parse image with Claude. Details: %s", exc)
+        raise RuntimeError(f"Failed to parse image with Claude API: {exc}") from exc
 
 
 def parse_pdf_text(text: str, user_comment: str = "") -> dict:
