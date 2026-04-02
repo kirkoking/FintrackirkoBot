@@ -18,6 +18,7 @@ document_filter = (
     filters.Document.PDF
     | filters.Document.FileExtension("xls")
     | filters.Document.FileExtension("xlsx")
+    | filters.Document.FileExtension("csv")
 )
 
 
