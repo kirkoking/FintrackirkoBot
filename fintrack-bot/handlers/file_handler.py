@@ -33,7 +33,11 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         filename = f"telegram_photo_{message.from_user.id}_{timestamp}.jpg"
-        drive_url = drive_service.upload_file(file_bytes, filename, "image/jpeg")
+        try:
+            drive_url = drive_service.upload_file(file_bytes, filename, "image/jpeg")
+        except Exception:
+            logger.warning("Drive upload failed — continuing without backup")
+            drive_url = None
         inserted_count = supabase_service.insert_transactions(transactions)
 
         context.user_data["last_file"] = {
@@ -46,14 +50,14 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
         summary_items = _summarize_transactions(transactions)
         await message.reply_text(
-            "✅ Recibí tu boleta. "
-            f"Encontré {len(transactions)} transacciones (guardadas: {inserted_count}).\n"
+            "â RecibÃ­ tu boleta. "
+            f"EncontrÃ© {len(transactions)} transacciones (guardadas: {inserted_count}).\n"
             f"{summary_items}"
         )
     except Exception:
         logger.exception("Failed to process photo message")
         await message.reply_text(
-            "❌ No pude procesar la imagen en este momento. Intenta nuevamente en unos minutos."
+            "â No pude procesar la imagen en este momento. Intenta nuevamente en unos minutos."
         )
 
 
@@ -80,16 +84,20 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             parsed_result = claude_service.parse_excel_text(text_content, user_comment)
         else:
             await message.reply_text(
-                "⚠️ Formato no soportado. Envía PDF, XLSX, XLS o CSV."
+                "â ï¸ Formato no soportado. EnvÃ­a PDF, XLSX, XLS o CSV."
             )
             return
 
         transactions = parsed_result.get("transactions", [])
-        drive_url = drive_service.upload_file(
-            file_bytes,
-            file_name,
-            document.mime_type or "application/octet-stream",
-        )
+        try:
+            drive_url = drive_service.upload_file(
+                file_bytes,
+                file_name,
+                document.mime_type or "application/octet-stream",
+            )
+        except Exception:
+            logger.warning("Drive upload failed — continuing without backup")
+            drive_url = None
         inserted_count = supabase_service.insert_transactions(transactions)
 
         context.user_data["last_file"] = {
@@ -103,14 +111,14 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
         summary_items = _summarize_transactions(transactions)
         await message.reply_text(
-            "✅ Recibí tu documento. "
-            f"Encontré {len(transactions)} transacciones (guardadas: {inserted_count}).\n"
+            "â RecibÃ­ tu documento. "
+            f"EncontrÃ© {len(transactions)} transacciones (guardadas: {inserted_count}).\n"
             f"{summary_items}"
         )
     except Exception:
         logger.exception("Failed to process document message: %s", file_name)
         await message.reply_text(
-            "❌ No pude procesar el documento. Verifica el formato o inténtalo otra vez."
+            "â No pude procesar el documento. Verifica el formato o intÃ©ntalo otra vez."
         )
 
 
@@ -140,17 +148,17 @@ def _extract_sheet_text(file_bytes: bytes, extension: str) -> str:
 
 def _summarize_transactions(transactions: list[dict[str, Any]]) -> str:
     if not transactions:
-        return "No se detectaron transacciones válidas."
+        return "No se detectaron transacciones vÃ¡lidas."
 
     snippets = []
     for tx in transactions[:5]:
         date = tx.get("date", "sin fecha")
-        description = tx.get("description") or tx.get("merchant") or "sin descripción"
+        description = tx.get("description") or tx.get("merchant") or "sin descripciÃ³n"
         amount = tx.get("amount", "?")
         currency = tx.get("currency") or "CLP"
-        snippets.append(f"• {date} | {description} | {amount} {currency}")
+        snippets.append(f"â¢ {date} | {description} | {amount} {currency}")
 
     if len(transactions) > 5:
-        snippets.append(f"… y {len(transactions) - 5} más")
+        snippets.append(f"â¦ y {len(transactions) - 5} mÃ¡s")
 
     return "\n".join(snippets)
