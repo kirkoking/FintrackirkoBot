@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 from io import BytesIO
@@ -12,14 +13,32 @@ SCOPES = ["https://www.googleapis.com/auth/drive"]
 
 
 def _get_drive_client():
-    service_account_path = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
-    if not service_account_path:
-        raise ValueError("GOOGLE_SERVICE_ACCOUNT_JSON is not configured.")
+    """
+    Supports two env var patterns:
+    - GOOGLE_SERVICE_ACCOUNT_JSON: the full JSON content as a string (for Render/cloud)
+    - GOOGLE_SERVICE_ACCOUNT_PATH: a file path (for local dev)
+    """
+    json_content = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
+    json_path = os.getenv("GOOGLE_SERVICE_ACCOUNT_PATH")
 
-    credentials = service_account.Credentials.from_service_account_file(
-        service_account_path,
-        scopes=SCOPES,
-    )
+    if json_content:
+        # Cloud deployment: JSON string stored as env var
+        info = json.loads(json_content)
+        credentials = service_account.Credentials.from_service_account_info(
+            info, scopes=SCOPES
+        )
+    elif json_path:
+        # Local dev: JSON file on disk
+        credentials = service_account.Credentials.from_service_account_file(
+            json_path, scopes=SCOPES
+        )
+    else:
+        raise ValueError(
+            "Google Drive not configured. "
+            "Set GOOGLE_SERVICE_ACCOUNT_JSON (JSON string) or "
+            "GOOGLE_SERVICE_ACCOUNT_PATH (file path)."
+        )
+
     return build("drive", "v3", credentials=credentials, cache_discovery=False)
 
 
@@ -28,33 +47,26 @@ def upload_file(file_bytes: bytes, filename: str, mimetype: str) -> str:
     if not folder_id:
         raise ValueError("GOOGLE_DRIVE_FOLDER_ID is not configured.")
 
-    try:
-        service = _get_drive_client()
+    service = _get_drive_client()
 
-        metadata = {
-            "name": filename,
-            "parents": [folder_id],
-        }
-        media = MediaIoBaseUpload(BytesIO(file_bytes), mimetype=mimetype, resumable=False)
+    metadata = {"name": filename, "parents": [folder_id]}
+    media = MediaIoBaseUpload(BytesIO(file_bytes), mimetype=mimetype, resumable=False)
 
-        created = (
-            service.files()
-            .create(body=metadata, media_body=media, fields="id,webViewLink,webContentLink")
-            .execute()
-        )
+    created = (
+        service.files()
+        .create(body=metadata, media_body=media, fields="id,webViewLink,webContentLink")
+        .execute()
+    )
 
-        file_id = created["id"]
+    file_id = created["id"]
 
-        service.permissions().create(
-            fileId=file_id,
-            body={"type": "anyone", "role": "reader"},
-        ).execute()
+    service.permissions().create(
+        fileId=file_id,
+        body={"type": "anyone", "role": "reader"},
+    ).execute()
 
-        return (
-            created.get("webViewLink")
-            or created.get("webContentLink")
-            or f"https://drive.google.com/file/d/{file_id}/view"
-        )
-    except Exception:
-        logger.exception("Failed to upload file to Google Drive")
-        raise
+    return (
+        created.get("webViewLink")
+        or created.get("webContentLink")
+        or f"https://drive.google.com/file/d/{file_id}/view"
+    )
