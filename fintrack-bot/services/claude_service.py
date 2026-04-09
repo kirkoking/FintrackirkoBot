@@ -15,11 +15,11 @@ TRANSACTION_SCHEMA_PROMPT = (
     "You are a financial data extractor for a Chilean user. "
     "Extract all transactions from the image. "
     "Return ONLY a valid JSON array of transactions. "
-    "Each transaction: {date, description, amount (negative=expense, positive=income), "
+    "Each transaction: {{date, description, amount (negative=expense, positive=income), "
     "currency (default CLP), "
     "category (food/transport/shopping/health/fitness/entertainment/personal_care/"
     "housing/utilities/loan_payment/fees/payment/other), "
-    "merchant, notes}. "
+    "merchant, notes}}. "
     "Use the user comment for additional context. Today's date: {today}"
 )
 
