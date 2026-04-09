@@ -1,5 +1,7 @@
 import logging
 import os
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from dotenv import load_dotenv
 from telegram.ext import Application, MessageHandler, filters
@@ -12,6 +14,25 @@ logging.basicConfig(
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
+
+
+# ── Health check HTTP server for Render ──────────────────────────────────────
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"OK")
+
+    def log_message(self, format, *args):
+        pass  # Silence access logs
+
+
+def start_health_server():
+    port = int(os.getenv("PORT", "10000"))
+    server = HTTPServer(("0.0.0.0", port), HealthHandler)
+    logger.info("Health check server running on port %s", port)
+    server.serve_forever()
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 document_filter = (
@@ -41,6 +62,10 @@ def build_application() -> Application:
 
 
 def main() -> None:
+    # Start health check server in background thread so Render is happy
+    health_thread = threading.Thread(target=start_health_server, daemon=True)
+    health_thread.start()
+
     application = build_application()
     logger.info("Starting Fintrack Bot polling loop")
     application.run_polling(allowed_updates=["message"])
