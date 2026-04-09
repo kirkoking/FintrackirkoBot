@@ -68,7 +68,11 @@ def main() -> None:
 
     application = build_application()
     logger.info("Starting Fintrack Bot polling loop")
-    application.run_polling(allowed_updates=["message"])
+    # drop_pending_updates=True ensures this instance wins if another is running
+    application.run_polling(
+        allowed_updates=["message"],
+        drop_pending_updates=True,
+    )
 
 
 if __name__ == "__main__":
