@@ -4,9 +4,9 @@ import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from dotenv import load_dotenv
-from telegram.ext import Application, MessageHandler, filters
+from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
-from handlers import file_handler, text_handler
+from handlers import file_handler, text_handler, cta_handler
 
 
 logging.basicConfig(
@@ -52,6 +52,10 @@ def build_application() -> Application:
 
     application = Application.builder().token(token).build()
 
+    # /cartola — activates CTA mode for the next file upload
+    application.add_handler(CommandHandler("cartola", cta_handler.handle_cartola_command))
+
+    # File handlers — CTA mode takes priority when active
     application.add_handler(MessageHandler(filters.PHOTO, file_handler.handle_photo))
     application.add_handler(MessageHandler(document_filter, file_handler.handle_document))
     application.add_handler(

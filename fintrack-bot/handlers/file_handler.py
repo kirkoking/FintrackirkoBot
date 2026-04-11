@@ -11,6 +11,7 @@ import pdfplumber
 from telegram import Update
 from telegram.ext import ContextTypes
 
+from handlers import cta_handler
 from services import claude_service, drive_service, image_enhancer, supabase_service
 
 logger = logging.getLogger(__name__)
@@ -19,6 +20,11 @@ logger = logging.getLogger(__name__)
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.message
     if not message or not message.photo:
+        return
+
+    # CTA mode takes priority: delegate to cta_handler
+    if cta_handler.is_cta_mode_active(context.user_data):
+        await cta_handler.handle_cta_photo(update, context)
         return
 
     photo = message.photo[-1]
@@ -73,6 +79,11 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = update.message
     if not message or not message.document:
+        return
+
+    # CTA mode takes priority: delegate to cta_handler
+    if cta_handler.is_cta_mode_active(context.user_data):
+        await cta_handler.handle_cta_document(update, context)
         return
 
     document = message.document

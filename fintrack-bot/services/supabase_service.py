@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 # Real account UUIDs from Supabase
 ACCOUNT_MAP = {
     "itau":           "0e1f70bf-013a-416d-b6fb-bc55ed30b9f1",
-    "itaÃº":           "0e1f70bf-013a-416d-b6fb-bc55ed30b9f1",
+    "itaú":            "0e1f70bf-013a-416d-b6fb-bc55ed30b9f1",
     "scotiabank":     "f5b382e4-4625-4b70-a890-ca44ace192fd",
     "banco de chile": "9636953b-d4cb-4a4a-b193-76796cc9c51d",
     "bdc":            "9636953b-d4cb-4a4a-b193-76796cc9c51d",
@@ -77,7 +77,7 @@ def insert_transactions(transactions: list) -> int:
             continue
         description_raw = _extract_text(
             tx, "description_raw", "description", "merchant"
-        ) or "Sin descripciÃ³n"
+        ) or "Sin descripción"
         description_clean = _extract_text(
             tx, "description_clean", "merchant", "description_raw", "description"
         ) or description_raw

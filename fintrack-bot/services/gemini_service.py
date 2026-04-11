@@ -93,7 +93,7 @@ def _parse_response(text: str) -> list[dict[str, Any]] | None:
     return txs
 
 
-def parse_image(image_bytes: bytes, user_comment: str = "") -> list[dict[str, Any]] | None:
+def parse_image(image_bytes: bytes, user_comment: str = "", system_prompt_override: str | None = None) -> list[dict[str, Any]] | None:
     """
     Try to parse a receipt/boleta image with Gemini.
     Returns list of transaction dicts, or None on failure (caller falls back to Claude).
@@ -107,7 +107,8 @@ def parse_image(image_bytes: bytes, user_comment: str = "") -> list[dict[str, An
         import io
         pil_image = PIL.Image.open(io.BytesIO(image_bytes))
 
-        parts: list[Any] = [_build_prompt("receipt or boleta image"), pil_image]
+        prompt = system_prompt_override or _build_prompt("receipt or boleta image")
+        parts: list[Any] = [prompt, pil_image]
         if user_comment:
             parts.append(f"User context: {user_comment}")
 
@@ -118,7 +119,7 @@ def parse_image(image_bytes: bytes, user_comment: str = "") -> list[dict[str, An
         return None
 
 
-def parse_text(text: str, source_hint: str, user_comment: str = "") -> list[dict[str, Any]] | None:
+def parse_text(text: str, source_hint: str, user_comment: str = "", system_prompt_override: str | None = None) -> list[dict[str, Any]] | None:
     """
     Try to parse text content (PDF text, Excel text) with Gemini.
     Returns list of transaction dicts, or None on failure.
@@ -128,7 +129,7 @@ def parse_text(text: str, source_hint: str, user_comment: str = "") -> list[dict
         return None
 
     try:
-        prompt = _build_prompt(source_hint)
+        prompt = system_prompt_override or _build_prompt(source_hint)
         content = f"{prompt}\n\nContent to parse:\n{text}"
         if user_comment:
             content += f"\n\nUser context: {user_comment}"
