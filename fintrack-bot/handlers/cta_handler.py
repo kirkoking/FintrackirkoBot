@@ -151,8 +151,10 @@ async def _finish_cta(message, context, file_bytes, filename, mime_type, parsed)
         logger.exception("Drive upload failed for CTA — continuing")
         drive_url = None
 
-    # Insert — supabase_service handles counterpart_name/bank, bank_reference, transfer types
-    inserted_count = supabase_service.insert_transactions(transactions)
+    # Resolve document-level account_id from bank_detected so every transaction
+    # gets the correct checking account without relying on description text matching.
+    account_id = supabase_service.resolve_cta_account_id(bank_detected)
+    inserted_count = supabase_service.insert_transactions(transactions, default_account_id=account_id)
 
     context.user_data["last_file"] = {
         "type": "cta",

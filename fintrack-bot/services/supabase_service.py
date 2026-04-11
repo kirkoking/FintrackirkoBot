@@ -7,10 +7,10 @@ from supabase import Client, create_client
 
 logger = logging.getLogger(__name__)
 
-# Real account UUIDs from Supabase
+# Real account UUIDs from Supabase — credit cards / general accounts
 ACCOUNT_MAP = {
     "itau":           "0e1f70bf-013a-416d-b6fb-bc55ed30b9f1",
-    "itaú":            "0e1f70bf-013a-416d-b6fb-bc55ed30b9f1",
+    "itaú":           "0e1f70bf-013a-416d-b6fb-bc55ed30b9f1",
     "scotiabank":     "f5b382e4-4625-4b70-a890-ca44ace192fd",
     "banco de chile": "9636953b-d4cb-4a4a-b193-76796cc9c51d",
     "bdc":            "9636953b-d4cb-4a4a-b193-76796cc9c51d",
@@ -19,6 +19,29 @@ ACCOUNT_MAP = {
     "cmr":            "b3428f73-ae68-48ce-820c-3dcae69d9873",
     "falabella":      "b3428f73-ae68-48ce-820c-3dcae69d9873",
 }
+
+# CTA (cuenta corriente / cuenta vista) account UUIDs — keyed by bank_detected value
+# from the CTA parser (lower-cased substring match)
+CTA_ACCOUNT_MAP = {
+    "itaú":          "7270f43c-a0f8-49b7-bef4-2371f20aa75c",
+    "itau":          "7270f43c-a0f8-49b7-bef4-2371f20aa75c",
+    "tenpo":         "c01d4b83-201d-4f49-bdf4-ca9e28d1ae9f",
+    "mercado pago":  "f0b03168-2fa2-4edc-8779-c4ab1d17d350",
+    "banco de chile": "e7627b0a-679d-4b3e-b1b6-70b819c9c469",
+    "bdc":            "e7627b0a-679d-4b3e-b1b6-70b819c9c469",
+    "scotiabank":     "3b793c1f-906b-4469-a52c-3a6e7f960285",
+}
+
+
+def resolve_cta_account_id(bank_detected: str | None) -> str | None:
+    """Return the checking account UUID for a CTA bank_detected string, or None."""
+    if not bank_detected:
+        return None
+    key = bank_detected.strip().lower()
+    for bank_name, account_id in CTA_ACCOUNT_MAP.items():
+        if bank_name in key or key in bank_name:
+            return account_id
+    return None
 
 VALID_CATEGORIES = {
     "food", "transport", "shopping", "health", "entertainment",
@@ -67,7 +90,13 @@ def _safe_category(raw: str | None) -> str:
     return slug if slug in VALID_CATEGORIES else "other"
 
 
-def insert_transactions(transactions: list) -> int:
+def insert_transactions(transactions: list, default_account_id: str | None = None) -> int:
+    """Insert transactions into Supabase.
+
+    default_account_id: used for CTA cartola ingests where the account is known
+    at the document level (bank_detected) rather than per-transaction.
+    Falls back to _infer_account_id() when not supplied.
+    """
     if not transactions:
         return 0
     rows: list[dict[str, Any]] = []
@@ -81,6 +110,7 @@ def insert_transactions(transactions: list) -> int:
         description_clean = _extract_text(
             tx, "description_clean", "merchant", "description_raw", "description"
         ) or description_raw
+        account_id = default_account_id or _infer_account_id(tx)
         row = {
             "date":              tx.get("date"),
             "description_raw":   description_raw,
@@ -88,7 +118,7 @@ def insert_transactions(transactions: list) -> int:
             "amount":            tx.get("amount", 0),
             "currency":          tx.get("currency") or "CLP",
             "category_slug":     _safe_category(tx.get("category_slug") or tx.get("category")),
-            "account_id":        _infer_account_id(tx),
+            "account_id":        account_id,
             "transaction_type":  tx.get("transaction_type") or "expense",
             "notes":             tx.get("notes") or None,
             "counterpart_name":  tx.get("counterpart_name") or None,
