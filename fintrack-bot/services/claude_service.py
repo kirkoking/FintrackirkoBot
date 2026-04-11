@@ -321,6 +321,145 @@ def parse_cta_image(base64_image: str, user_comment: str = "", raw_bytes: bytes 
         raise RuntimeError(f"CTA image parse failed: {exc}") from exc
 
 
+LIQUIDACION_SCHEMA_PROMPT = """Eres un parser experto de liquidaciones de sueldo chilenas. Devuelve SOLO JSON válido, sin texto adicional ni markdown.
+
+Schema de respuesta:
+{
+  "employer": "Nombre empresa empleadora",
+  "date": "YYYY-MM-DD",
+  "period_start": "YYYY-MM-DD",
+  "period_end": "YYYY-MM-DD",
+  "gross_amount": 1500000,
+  "net_amount": 1100000,
+  "currency": "CLP",
+  "deductions": {
+    "afp": 105000,
+    "isapre": 75000,
+    "fonasa": 0,
+    "sis": 8000,
+    "impuesto_unico": 0,
+    "mutual": 3000,
+    "otros_descuentos": 0
+  },
+  "bonuses": {
+    "colacion": 96200,
+    "movilizacion": 30000,
+    "bono_asistencia": 50000,
+    "bono_variable": 0,
+    "horas_extras": 0,
+    "otros_haberes": 0
+  },
+  "raw_data": {}
+}
+
+REGLAS:
+- gross_amount: total haberes imponibles + no imponibles (suma de todos los haberes).
+- net_amount: líquido a pagar (lo que efectivamente recibe el trabajador).
+- deductions: solo montos positivos; omite claves con valor 0 si no aparecen en el documento.
+- bonuses: solo montos positivos; omite claves con valor 0 si no aparecen.
+- date: fecha de pago o último día del período si no aparece fecha explícita.
+- period_start / period_end: el mes trabajado (ej. 2026-04-01 / 2026-04-30).
+- raw_data: incluye todos los campos numéricos originales del documento como respaldo.
+- Si no puedes identificar un campo con seguridad, usa null (nunca inventes valores).
+Today's date: {today}"""
+
+
+def parse_liquidacion_pdf(text: str, user_comment: str = "") -> dict:
+    """
+    Parse a Chilean liquidación de sueldo from PDF text.
+    Cascade: Gemini first → Claude fallback.
+    """
+    from services import gemini_service
+
+    today_prompt = LIQUIDACION_SCHEMA_PROMPT.replace("{today}", date.today().isoformat())
+
+    gemini_result = gemini_service.parse_text(
+        text, "Chilean liquidación de sueldo", user_comment,
+        system_prompt_override=today_prompt,
+        expect_object=True,
+    )
+    if gemini_result is not None and isinstance(gemini_result, dict):
+        logger.info("parse_liquidacion_pdf: Gemini succeeded")
+        gemini_result["parser"] = "gemini"
+        return gemini_result
+
+    logger.info("parse_liquidacion_pdf: falling back to Claude")
+    user_parts = [f"Parse esta liquidación de sueldo:\n{text}"]
+    if user_comment:
+        user_parts.append(f"User context: {user_comment}")
+    try:
+        client = _get_client()
+        response = client.messages.create(
+            model=MODEL_NAME,
+            max_tokens=2000,
+            system=today_prompt,
+            messages=[{"role": "user", "content": "\n\n".join(user_parts)}],
+        )
+        import json as _json
+        raw = _extract_text_content(response)
+        parsed = _json.loads(raw.strip().lstrip("```json").lstrip("```").rstrip("```"))
+        parsed["parser"] = "claude"
+        return parsed
+    except Exception as exc:
+        logger.exception("parse_liquidacion_pdf: Claude failed: %s", exc)
+        raise RuntimeError(f"Liquidacion PDF parse failed: {exc}") from exc
+
+
+def parse_liquidacion_image(base64_image: str, user_comment: str = "", raw_bytes: bytes | None = None) -> dict:
+    """
+    Parse a Chilean liquidación de sueldo from an image (photo/screenshot).
+    Cascade: Gemini first → Claude fallback.
+    """
+    import base64 as b64mod
+    import json as _json
+    from services import gemini_service
+
+    if raw_bytes is None and base64_image:
+        normalized = base64_image.strip()
+        if normalized.startswith("data:") and "base64," in normalized:
+            normalized = normalized.split("base64,", 1)[1].strip()
+        try:
+            raw_bytes = b64mod.b64decode(normalized)
+        except Exception:
+            raw_bytes = None
+
+    today_prompt = LIQUIDACION_SCHEMA_PROMPT.replace("{today}", date.today().isoformat())
+
+    if raw_bytes:
+        gemini_result = gemini_service.parse_image(
+            raw_bytes, user_comment,
+            system_prompt_override=today_prompt,
+            expect_object=True,
+        )
+        if gemini_result is not None and isinstance(gemini_result, dict):
+            logger.info("parse_liquidacion_image: Gemini succeeded")
+            gemini_result["parser"] = "gemini"
+            return gemini_result
+
+    logger.info("parse_liquidacion_image: falling back to Claude")
+    try:
+        client = _get_client()
+        normalized_base64 = base64_image.strip()
+        if normalized_base64.startswith("data:") and "base64," in normalized_base64:
+            normalized_base64 = normalized_base64.split("base64,", 1)[1].strip()
+        user_blocks: list[dict[str, Any]] = [
+            {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": normalized_base64}}
+        ]
+        if user_comment:
+            user_blocks.append({"type": "text", "text": f"User context: {user_comment}"})
+        response = client.messages.create(
+            model=MODEL_NAME, max_tokens=2000, system=today_prompt,
+            messages=[{"role": "user", "content": user_blocks}],
+        )
+        raw = _extract_text_content(response)
+        parsed = _json.loads(raw.strip().lstrip("```json").lstrip("```").rstrip("```"))
+        parsed["parser"] = "claude"
+        return parsed
+    except Exception as exc:
+        logger.exception("parse_liquidacion_image: Claude failed: %s", exc)
+        raise RuntimeError(f"Liquidacion image parse failed: {exc}") from exc
+
+
 def answer_finance_question(question: str, context_data: str) -> str:
     client = _get_client()
     system_prompt = (

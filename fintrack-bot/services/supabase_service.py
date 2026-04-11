@@ -140,6 +140,36 @@ def insert_transactions(transactions: list, default_account_id: str | None = Non
         raise
 
 
+def insert_income(parsed: dict) -> bool:
+    """Insert a parsed liquidación de sueldo into the income table.
+    Returns True on success, False on failure.
+    """
+    if not parsed:
+        return False
+    row = {
+        "date":         parsed.get("date"),
+        "employer":     parsed.get("employer"),
+        "gross_amount": parsed.get("gross_amount"),
+        "net_amount":   parsed.get("net_amount"),
+        "currency":     parsed.get("currency") or "CLP",
+        "period_start": parsed.get("period_start"),
+        "period_end":   parsed.get("period_end"),
+        "deductions":   parsed.get("deductions") or {},
+        "bonuses":      parsed.get("bonuses") or {},
+        "raw_data":     parsed.get("raw_data") or {},
+        "notes":        parsed.get("notes") or None,
+    }
+    try:
+        client = _get_client()
+        client.table("income").insert(row).execute()
+        logger.info("Inserted income record: employer=%s date=%s net=%s",
+                    row["employer"], row["date"], row["net_amount"])
+        return True
+    except Exception:
+        logger.exception("Failed to insert income record into Supabase")
+        return False
+
+
 def get_transactions(filters: dict | None = None) -> list:
     filters = filters or {}
     try:

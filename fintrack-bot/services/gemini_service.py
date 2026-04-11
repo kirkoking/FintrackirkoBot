@@ -58,16 +58,20 @@ def _build_prompt(source_hint: str) -> str:
     return _SYSTEM_PROMPT.replace("{today}", date.today().isoformat()) + f"\n\nSource: {source_hint}."
 
 
-def _parse_response(text: str) -> list[dict[str, Any]] | None:
-    """Parse and validate Gemini JSON response. Returns None if invalid."""
+def _strip_fences(text: str) -> str:
+    """Remove markdown code fences from a Gemini response."""
     cleaned = text.strip()
-    # Strip markdown code fences if present
     if cleaned.startswith("```"):
         lines = cleaned.split("\n")
         cleaned = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+    return cleaned
 
+
+def _parse_response(text: str) -> list[dict[str, Any]] | None:
+    """Parse and validate a Gemini JSON response that contains a 'transactions' array.
+    Returns None if invalid so the caller falls back to Claude."""
     try:
-        parsed = json.loads(cleaned)
+        parsed = json.loads(_strip_fences(text))
     except json.JSONDecodeError:
         logger.warning("Gemini returned invalid JSON: %.200s", text)
         return None
@@ -93,18 +97,38 @@ def _parse_response(text: str) -> list[dict[str, Any]] | None:
     return txs
 
 
-def parse_image(image_bytes: bytes, user_comment: str = "", system_prompt_override: str | None = None) -> list[dict[str, Any]] | None:
+def _parse_response_object(text: str) -> dict[str, Any] | None:
+    """Parse a Gemini JSON response that returns a plain object (e.g. liquidacion).
+    Returns None on failure so caller falls back to Claude."""
+    try:
+        parsed = json.loads(_strip_fences(text))
+    except json.JSONDecodeError:
+        logger.warning("Gemini returned invalid JSON (object): %.200s", text)
+        return None
+    if not isinstance(parsed, dict):
+        logger.warning("Gemini object response is not a dict")
+        return None
+    return parsed
+
+
+def parse_image(
+    image_bytes: bytes,
+    user_comment: str = "",
+    system_prompt_override: str | None = None,
+    expect_object: bool = False,
+) -> list[dict[str, Any]] | dict[str, Any] | None:
     """
-    Try to parse a receipt/boleta image with Gemini.
-    Returns list of transaction dicts, or None on failure (caller falls back to Claude).
+    Try to parse an image with Gemini.
+    expect_object=False (default): returns list of transaction dicts, or None on failure.
+    expect_object=True: returns a plain dict (e.g. liquidacion schema), or None on failure.
     """
     model = _get_model()
     if model is None:
         return None
 
     try:
-        import PIL.Image
         import io
+        import PIL.Image
         pil_image = PIL.Image.open(io.BytesIO(image_bytes))
 
         prompt = system_prompt_override or _build_prompt("receipt or boleta image")
@@ -113,16 +137,25 @@ def parse_image(image_bytes: bytes, user_comment: str = "", system_prompt_overri
             parts.append(f"User context: {user_comment}")
 
         response = model.generate_content(parts)
+        if expect_object:
+            return _parse_response_object(response.text)
         return _parse_response(response.text)
     except Exception as exc:
         logger.warning("Gemini image parse failed: %s — falling back to Claude", exc)
         return None
 
 
-def parse_text(text: str, source_hint: str, user_comment: str = "", system_prompt_override: str | None = None) -> list[dict[str, Any]] | None:
+def parse_text(
+    text: str,
+    source_hint: str,
+    user_comment: str = "",
+    system_prompt_override: str | None = None,
+    expect_object: bool = False,
+) -> list[dict[str, Any]] | dict[str, Any] | None:
     """
-    Try to parse text content (PDF text, Excel text) with Gemini.
-    Returns list of transaction dicts, or None on failure.
+    Try to parse text content with Gemini.
+    expect_object=False (default): returns list of transaction dicts, or None on failure.
+    expect_object=True: returns a plain dict (e.g. liquidacion schema), or None on failure.
     """
     model = _get_model()
     if model is None:
@@ -135,6 +168,8 @@ def parse_text(text: str, source_hint: str, user_comment: str = "", system_promp
             content += f"\n\nUser context: {user_comment}"
 
         response = model.generate_content(content)
+        if expect_object:
+            return _parse_response_object(response.text)
         return _parse_response(response.text)
     except Exception as exc:
         logger.warning("Gemini text parse failed (%s): %s — falling back to Claude", source_hint, exc)

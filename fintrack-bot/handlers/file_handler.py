@@ -11,7 +11,7 @@ import pdfplumber
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from handlers import cta_handler
+from handlers import cta_handler, liquidacion_handler
 from services import claude_service, drive_service, image_enhancer, supabase_service
 
 logger = logging.getLogger(__name__)
@@ -22,7 +22,10 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if not message or not message.photo:
         return
 
-    # CTA mode takes priority: delegate to cta_handler
+    # Mode priority: liquidacion > CTA > default boleta
+    if liquidacion_handler.is_liquidacion_mode_active(context.user_data):
+        await liquidacion_handler.handle_liquidacion_photo(update, context)
+        return
     if cta_handler.is_cta_mode_active(context.user_data):
         await cta_handler.handle_cta_photo(update, context)
         return
@@ -81,7 +84,10 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if not message or not message.document:
         return
 
-    # CTA mode takes priority: delegate to cta_handler
+    # Mode priority: liquidacion > CTA > default boleta
+    if liquidacion_handler.is_liquidacion_mode_active(context.user_data):
+        await liquidacion_handler.handle_liquidacion_document(update, context)
+        return
     if cta_handler.is_cta_mode_active(context.user_data):
         await cta_handler.handle_cta_document(update, context)
         return
