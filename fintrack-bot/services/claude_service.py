@@ -6,6 +6,8 @@ from typing import Any
 
 from anthropic import Anthropic
 
+from services import gemini_service
+
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +88,34 @@ def _call_text_extraction(source_hint: str, text: str, user_comment: str = "") -
     return _parse_json_array(_extract_text_content(response))
 
 
-def parse_image(base64_image: str, user_comment: str = "") -> dict:
+def parse_image(base64_image: str, user_comment: str = "", raw_bytes: bytes | None = None) -> dict:
+    """
+    Parse a receipt/boleta image.
+    Cascade: Gemini 2.5 Flash → Claude (fallback).
+    Pass raw_bytes when available — Gemini uses them directly for better quality.
+    """
+    import base64 as b64mod
+
+    # ── Gemini first ──────────────────────────────────────────────────────────
+    if raw_bytes is not None:
+        image_bytes = raw_bytes
+    else:
+        normalized = base64_image.strip()
+        if normalized.startswith("data:") and "base64," in normalized:
+            normalized = normalized.split("base64,", 1)[1].strip()
+        try:
+            image_bytes = b64mod.b64decode(normalized)
+        except Exception:
+            image_bytes = None
+
+    if image_bytes:
+        gemini_result = gemini_service.parse_image(image_bytes, user_comment)
+        if gemini_result is not None:
+            logger.info("parse_image: Gemini succeeded (%d transactions)", len(gemini_result))
+            return {"transactions": gemini_result, "parser": "gemini"}
+
+    # ── Claude fallback ───────────────────────────────────────────────────────
+    logger.info("parse_image: falling back to Claude")
     try:
         client = _get_client()
         system_prompt = _build_extraction_prompt("receipt or boleta image")
@@ -110,22 +139,48 @@ def parse_image(base64_image: str, user_comment: str = "") -> dict:
             system=system_prompt,
             messages=[{"role": "user", "content": user_blocks}],
         )
-        return {"transactions": _parse_json_array(_extract_text_content(response))}
+        return {"transactions": _parse_json_array(_extract_text_content(response)), "parser": "claude"}
     except Exception as exc:
         logger.exception("Failed to parse image with Claude. Details: %s", exc)
         raise RuntimeError(f"Failed to parse image with Claude API: {exc}") from exc
 
 
 def parse_pdf_text(text: str, user_comment: str = "") -> dict:
+    """
+    Parse PDF bank statement text.
+    Cascade: Gemini 2.5 Flash → Claude (fallback).
+    """
+    # ── Gemini first ──────────────────────────────────────────────────────────
+    gemini_result = gemini_service.parse_text(
+        text, "Chilean bank statement (estado de cuenta)", user_comment
+    )
+    if gemini_result is not None:
+        logger.info("parse_pdf_text: Gemini succeeded (%d transactions)", len(gemini_result))
+        return {"transactions": gemini_result, "parser": "gemini"}
+
+    # ── Claude fallback ───────────────────────────────────────────────────────
+    logger.info("parse_pdf_text: falling back to Claude")
     transactions = _call_text_extraction(
         "Chilean bank statement (estado de cuenta)", text, user_comment
     )
-    return {"transactions": transactions}
+    return {"transactions": transactions, "parser": "claude"}
 
 
 def parse_excel_text(text: str, user_comment: str = "") -> dict:
+    """
+    Parse Excel/CSV transaction data.
+    Cascade: Gemini 2.5 Flash → Claude (fallback).
+    """
+    # ── Gemini first ──────────────────────────────────────────────────────────
+    gemini_result = gemini_service.parse_text(text, "Excel/CSV transaction data", user_comment)
+    if gemini_result is not None:
+        logger.info("parse_excel_text: Gemini succeeded (%d transactions)", len(gemini_result))
+        return {"transactions": gemini_result, "parser": "gemini"}
+
+    # ── Claude fallback ───────────────────────────────────────────────────────
+    logger.info("parse_excel_text: falling back to Claude")
     transactions = _call_text_extraction("Excel/CSV transaction data", text, user_comment)
-    return {"transactions": transactions}
+    return {"transactions": transactions, "parser": "claude"}
 
 
 def answer_finance_question(question: str, context_data: str) -> str:
