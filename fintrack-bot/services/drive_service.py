@@ -28,7 +28,6 @@ def _get_drive_client():
         token_uri="https://oauth2.googleapis.com/token",
         client_id=client_id,
         client_secret=client_secret,
-        scopes=SCOPES,
     )
     return build("drive", "v3", credentials=creds, cache_discovery=False)
 

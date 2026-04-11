@@ -36,7 +36,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         try:
             drive_url = drive_service.upload_file(file_bytes, filename, "image/jpeg")
         except Exception:
-            logger.warning("Drive upload failed — continuing without backup")
+            logger.exception("Drive upload failed — continuing without backup")
             drive_url = None
         inserted_count = supabase_service.insert_transactions(transactions)
 
@@ -96,7 +96,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 document.mime_type or "application/octet-stream",
             )
         except Exception:
-            logger.warning("Drive upload failed — continuing without backup")
+            logger.exception("Drive upload failed — continuing without backup")
             drive_url = None
         inserted_count = supabase_service.insert_transactions(transactions)
 
