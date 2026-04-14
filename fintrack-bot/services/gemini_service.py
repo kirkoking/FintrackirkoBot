@@ -1,5 +1,5 @@
 """
-Gemini parser service — Wave D.1
+Gemini parser service — Wave D.1 (updated to google-genai SDK)
 Primary parser: Gemini 2.5 Flash (free tier, fast).
 Returns None on any failure so caller can fall back to Claude.
 """
@@ -12,16 +12,17 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# Lazy-import so the bot still starts even if google-generativeai isn't installed
+# Lazy-import so the bot still starts even if google-genai isn't installed
 try:
-    import google.generativeai as genai
+    from google import genai as _genai
+    from google.genai import types as _types
     _GENAI_AVAILABLE = True
 except ImportError:
     _GENAI_AVAILABLE = False
-    logger.warning("google-generativeai not installed — Gemini parser unavailable, Claude will handle everything")
+    logger.warning("google-genai not installed — Gemini parser unavailable, Claude will handle everything")
 
 
-MODEL = "gemini-2.5-flash-preview-04-17"
+MODEL = "gemini-2.5-flash-preview-05-20"
 
 _SYSTEM_PROMPT = (
     "You are a financial data extractor for a Chilean user. "
@@ -42,7 +43,7 @@ _SYSTEM_PROMPT = (
 )
 
 
-def _get_model():
+def _get_client():
     """Initialize Gemini client. Returns None if unavailable."""
     if not _GENAI_AVAILABLE:
         return None
@@ -50,8 +51,7 @@ def _get_model():
     if not api_key:
         logger.warning("GOOGLE_AI_API_KEY not set — Gemini unavailable")
         return None
-    genai.configure(api_key=api_key)
-    return genai.GenerativeModel(MODEL)
+    return _genai.Client(api_key=api_key)
 
 
 def _build_prompt(source_hint: str) -> str:
@@ -122,21 +122,19 @@ def parse_image(
     expect_object=False (default): returns list of transaction dicts, or None on failure.
     expect_object=True: returns a plain dict (e.g. liquidacion schema), or None on failure.
     """
-    model = _get_model()
-    if model is None:
+    client = _get_client()
+    if client is None:
         return None
 
     try:
-        import io
-        import PIL.Image
-        pil_image = PIL.Image.open(io.BytesIO(image_bytes))
-
         prompt = system_prompt_override or _build_prompt("receipt or boleta image")
-        parts: list[Any] = [prompt, pil_image]
-        if user_comment:
-            parts.append(f"User context: {user_comment}")
 
-        response = model.generate_content(parts)
+        image_part = _types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg")
+        contents: list[Any] = [prompt, image_part]
+        if user_comment:
+            contents.append(f"User context: {user_comment}")
+
+        response = client.models.generate_content(model=MODEL, contents=contents)
         if expect_object:
             return _parse_response_object(response.text)
         return _parse_response(response.text)
@@ -157,8 +155,8 @@ def parse_text(
     expect_object=False (default): returns list of transaction dicts, or None on failure.
     expect_object=True: returns a plain dict (e.g. liquidacion schema), or None on failure.
     """
-    model = _get_model()
-    if model is None:
+    client = _get_client()
+    if client is None:
         return None
 
     try:
@@ -167,7 +165,7 @@ def parse_text(
         if user_comment:
             content += f"\n\nUser context: {user_comment}"
 
-        response = model.generate_content(content)
+        response = client.models.generate_content(model=MODEL, contents=content)
         if expect_object:
             return _parse_response_object(response.text)
         return _parse_response(response.text)
