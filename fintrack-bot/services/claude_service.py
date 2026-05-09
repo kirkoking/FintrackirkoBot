@@ -4,14 +4,18 @@ import os
 from datetime import date
 from typing import Any
 
-from anthropic import Anthropic
+from anthropic import Anthropic, AuthenticationError
 
 from services import gemini_service
 
 
 logger = logging.getLogger(__name__)
 
-MODEL_NAME = "claude-sonnet-4-20250514"
+MODEL_NAME = "claude-sonnet-4-5"
+
+
+class ClaudeAuthError(RuntimeError):
+    """Raised when Anthropic returns 401/403 — surface a clear message to the user."""
 
 TRANSACTION_SCHEMA_PROMPT = (
     "You are a financial data extractor for a Chilean user. "
@@ -156,6 +160,9 @@ def parse_image(base64_image: str, user_comment: str = "", raw_bytes: bytes | No
     logger.info("parse_image: falling back to Claude")
     try:
         client = _get_client()
+    except ValueError as exc:
+        raise ClaudeAuthError(str(exc)) from exc
+    try:
         system_prompt = _build_extraction_prompt("receipt or boleta image")
         normalized_base64 = base64_image.strip()
         if normalized_base64.startswith("data:") and "base64," in normalized_base64:
@@ -178,6 +185,9 @@ def parse_image(base64_image: str, user_comment: str = "", raw_bytes: bytes | No
             messages=[{"role": "user", "content": user_blocks}],
         )
         return {"transactions": _parse_json_array(_extract_text_content(response)), "parser": "claude"}
+    except AuthenticationError as exc:
+        logger.error("Claude returned 401/403 — check ANTHROPIC_API_KEY")
+        raise ClaudeAuthError("Anthropic API rejected the key (401/403).") from exc
     except Exception as exc:
         logger.exception("Failed to parse image with Claude. Details: %s", exc)
         raise RuntimeError(f"Failed to parse image with Claude API: {exc}") from exc

@@ -72,6 +72,12 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             f"Encontré {len(transactions)} transacciones (guardadas: {inserted_count}).\n"
             f"{summary_items}"
         )
+    except claude_service.ClaudeAuthError:
+        logger.exception("Photo: Anthropic auth failed")
+        await message.reply_text(
+            "❌ La API key de Claude está inválida o vencida. "
+            "Revisa ANTHROPIC_API_KEY en Render → Environment."
+        )
     except Exception:
         logger.exception("Failed to process photo message")
         await message.reply_text(

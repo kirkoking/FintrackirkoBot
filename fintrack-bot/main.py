@@ -50,6 +50,13 @@ def build_application() -> Application:
     if not token:
         raise ValueError("TELEGRAM_BOT_TOKEN is missing. Set it in the .env file.")
 
+    # Warn loudly at startup if AI keys are missing — so the first log line points
+    # at the real problem instead of users seeing generic "try again later" errors.
+    if not os.getenv("ANTHROPIC_API_KEY"):
+        logger.warning("ANTHROPIC_API_KEY is missing — Claude fallback will fail with 401")
+    if not os.getenv("GOOGLE_AI_API_KEY"):
+        logger.warning("GOOGLE_AI_API_KEY is missing — Gemini parser disabled, every request will hit Claude")
+
     application = Application.builder().token(token).build()
 
     # /cartola — activates CTA mode for the next file upload
