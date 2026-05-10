@@ -55,22 +55,24 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             logger.exception("Drive upload failed — continuing without backup")
             drive_url = None
 
-        inserted_count = supabase_service.insert_transactions(transactions)
+        tx_ids = supabase_service.insert_transactions(transactions)
 
         context.user_data["last_file"] = {
             "type": "photo",
             "filename": filename,
             "drive_url": drive_url,
             "transactions_count": len(transactions),
+            "transaction_ids": tx_ids,
             "parser": parser_used,
             "uploaded_at": datetime.utcnow().isoformat(),
         }
 
         summary_items = _summarize_transactions(transactions)
+        edit_hint = "\n\n✏️ ¿Algo mal? Usa /editar para corregirlo." if tx_ids else ""
         await message.reply_text(
             f"✅ Recibí tu boleta. "
-            f"Encontré {len(transactions)} transacciones (guardadas: {inserted_count}).\n"
-            f"{summary_items}"
+            f"Encontré {len(transactions)} transacciones (guardadas: {len(tx_ids)}).\n"
+            f"{summary_items}{edit_hint}"
         )
     except Exception:
         logger.exception("Failed to process photo message")
@@ -127,7 +129,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             logger.exception("Drive upload failed — continuing without backup")
             drive_url = None
 
-        inserted_count = supabase_service.insert_transactions(transactions)
+        tx_ids = supabase_service.insert_transactions(transactions)
 
         context.user_data["last_file"] = {
             "type": "document",
@@ -135,15 +137,17 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             "extension": extension,
             "drive_url": drive_url,
             "transactions_count": len(transactions),
+            "transaction_ids": tx_ids,
             "parser": parser_used,
             "uploaded_at": datetime.utcnow().isoformat(),
         }
 
         summary_items = _summarize_transactions(transactions)
+        edit_hint = "\n\n✏️ ¿Algo mal? Usa /editar para corregirlo." if tx_ids else ""
         await message.reply_text(
             f"✅ Recibí tu documento. "
-            f"Encontré {len(transactions)} transacciones (guardadas: {inserted_count}).\n"
-            f"{summary_items}"
+            f"Encontré {len(transactions)} transacciones (guardadas: {len(tx_ids)}).\n"
+            f"{summary_items}{edit_hint}"
         )
     except Exception:
         logger.exception("Failed to process document message: %s", file_name)

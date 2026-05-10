@@ -6,6 +6,7 @@ from typing import Any
 from telegram import Update
 from telegram.ext import ContextTypes
 
+from handlers import edit_handler
 from services import claude_service, supabase_service
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     if _is_help_command(normalized):
         await update.message.reply_text(_help_message())
+        return
+
+    if edit_handler.is_edit_mode_active(context.user_data):
+        await edit_handler.handle_edit_text(update, context)
         return
 
     if _is_summary_command(normalized):
@@ -192,6 +197,7 @@ def _help_message() -> str:
         "🆘 Ayuda Fintrack Bot\n"
         "• Envíame una boleta/foto o PDF/Excel/CSV para registrar transacciones.\n"
         "• Luego puedes agregar un comentario en texto.\n"
+        "• /editar — corrige el monto, nombre u otro dato de la última boleta guardada.\n"
         "• Escribe resumen para ver últimos 30 días.\n"
         "• Escribe este mes para ver el mes actual.\n"
         "• También puedes hacer preguntas como: '¿Cuánto gasté en comida?'"

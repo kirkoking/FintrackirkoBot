@@ -460,6 +460,47 @@ def parse_liquidacion_image(base64_image: str, user_comment: str = "", raw_bytes
         raise RuntimeError(f"Liquidacion image parse failed: {exc}") from exc
 
 
+_EDIT_INTENT_PROMPT = """You parse user corrections for a transaction record. Return ONLY valid JSON, no markdown.
+
+Editable fields and their types:
+- amount: integer, NEGATIVE for expenses/payments (e.g. user says "10000" for an expense → return -10000)
+- description_clean: string, merchant or store name
+- category_slug: one of: food, transport, shopping, health, entertainment, fitness, personal_care, utilities, housing, fees, loan_payment, payment, subscriptions, travel, education, donations, pets, other
+- date: YYYY-MM-DD string
+- notes: string
+
+Return: {"field": "<field_name>", "value": <new_value>}
+If you cannot identify a clear correction: {"error": "no correction found"}"""
+
+
+def parse_edit_intent(user_text: str, transaction: dict) -> dict | None:
+    """Parse a natural-language correction and return {field, value} or {error: ...}."""
+    client = _get_client()
+    tx_summary = (
+        f"date={transaction.get('date')} "
+        f"description={transaction.get('description_clean')} "
+        f"amount={transaction.get('amount')} "
+        f"category={transaction.get('category_slug')} "
+        f"type={transaction.get('transaction_type')}"
+    )
+    try:
+        response = client.messages.create(
+            model=MODEL_NAME,
+            max_tokens=100,
+            system=_EDIT_INTENT_PROMPT,
+            messages=[{
+                "role": "user",
+                "content": f"Current transaction: {tx_summary}\nUser correction: {user_text}",
+            }],
+        )
+        import json as _json
+        raw = _extract_text_content(response).strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+        return _json.loads(raw)
+    except Exception as exc:
+        logger.exception("parse_edit_intent failed")
+        raise RuntimeError(f"Edit intent parsing failed: {exc}") from exc
+
+
 def answer_finance_question(question: str, context_data: str) -> str:
     client = _get_client()
     system_prompt = (

@@ -154,13 +154,14 @@ async def _finish_cta(message, context, file_bytes, filename, mime_type, parsed)
     # Resolve document-level account_id from bank_detected so every transaction
     # gets the correct checking account without relying on description text matching.
     account_id = supabase_service.resolve_cta_account_id(bank_detected)
-    inserted_count = supabase_service.insert_transactions(transactions, default_account_id=account_id)
+    tx_ids = supabase_service.insert_transactions(transactions, default_account_id=account_id)
 
     context.user_data["last_file"] = {
         "type": "cta",
         "filename": filename,
         "drive_url": drive_url,
         "transactions_count": len(transactions),
+        "transaction_ids": tx_ids,
         "parser": parser_used,
         "bank_detected": bank_detected,
         "uploaded_at": datetime.now(timezone.utc).isoformat(),
@@ -174,11 +175,12 @@ async def _finish_cta(message, context, file_bytes, filename, mime_type, parsed)
 
     type_summary = ", ".join(f"{v} {_type_label(k)}" for k, v in sorted(type_counts.items()))
     bank_line = f" · {bank_detected}" if bank_detected else ""
+    edit_hint = "\n✏️ ¿Algo mal? Usa /editar para corregirlo." if tx_ids else ""
 
     await message.reply_text(
         f"✅ Cartola procesada{bank_line}.\n"
-        f"📊 {len(transactions)} movimientos ({type_summary}) — guardados: {inserted_count}\n"
-        f"⚙️ Parser: {parser_used}"
+        f"📊 {len(transactions)} movimientos ({type_summary}) — guardados: {len(tx_ids)}\n"
+        f"⚙️ Parser: {parser_used}{edit_hint}"
     )
 
 

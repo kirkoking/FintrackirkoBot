@@ -90,15 +90,15 @@ def _safe_category(raw: str | None) -> str:
     return slug if slug in VALID_CATEGORIES else "other"
 
 
-def insert_transactions(transactions: list, default_account_id: str | None = None) -> int:
-    """Insert transactions into Supabase.
+def insert_transactions(transactions: list, default_account_id: str | None = None) -> list[str]:
+    """Insert transactions into Supabase. Returns list of inserted row IDs.
 
     default_account_id: used for CTA cartola ingests where the account is known
     at the document level (bank_detected) rather than per-transaction.
     Falls back to _infer_account_id() when not supplied.
     """
     if not transactions:
-        return 0
+        return []
     rows: list[dict[str, Any]] = []
     for tx in transactions:
         if not isinstance(tx, dict):
@@ -128,16 +128,52 @@ def insert_transactions(transactions: list, default_account_id: str | None = Non
         }
         rows.append(row)
     if not rows:
-        return 0
+        return []
     try:
         client = _get_client()
         result = client.table("transactions").insert(rows).execute()
-        inserted = len(result.data) if result.data else len(rows)
-        logger.info("Inserted %d transactions", inserted)
-        return inserted
+        ids = [row["id"] for row in (result.data or []) if row.get("id")]
+        logger.info("Inserted %d transactions", len(ids))
+        return ids
     except Exception:
         logger.exception("Failed to insert transactions into Supabase")
         raise
+
+
+def get_transactions_by_ids(ids: list[str]) -> list[dict]:
+    """Fetch full transaction rows by a list of UUIDs, ordered by date."""
+    if not ids:
+        return []
+    try:
+        client = _get_client()
+        response = (
+            client.table("transactions")
+            .select(
+                "id,date,description_clean,description_raw,amount,currency,"
+                "category_slug,account_id,notes,transaction_type"
+            )
+            .in_("id", ids)
+            .order("date", desc=False)
+            .execute()
+        )
+        return response.data or []
+    except Exception:
+        logger.exception("Failed to fetch transactions by IDs")
+        raise
+
+
+def update_transaction(tx_id: str, fields: dict) -> bool:
+    """Partial update a single transaction row. Returns True on success."""
+    if not fields:
+        return False
+    try:
+        client = _get_client()
+        client.table("transactions").update(fields).eq("id", tx_id).execute()
+        logger.info("Updated transaction %s: %r", tx_id, fields)
+        return True
+    except Exception:
+        logger.exception("Failed to update transaction %s", tx_id)
+        return False
 
 
 def insert_income(parsed: dict) -> bool:
