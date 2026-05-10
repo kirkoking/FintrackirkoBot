@@ -98,18 +98,66 @@ If 0 transactions: "✅ Sin movimientos detectados en las últimas 24h" → skip
 
 ---
 
-## Step 5 — Insert into Supabase
+## Step 5 — Upsert into Supabase (insert or enrich)
 
-Use the Supabase connector. For each transaction:
+The email is **more reliable than OCR** for structured fields (merchant name, amount digits, account, bank reference). If the same transaction was already uploaded as a photo via the bot, **enrich and correct it** rather than skipping it.
 
-1. **Dedupe check:** Query `transactions` table for any row where:
-   - `date = <tx date>` AND
-   - `amount = <tx amount>` AND
-   - `description_clean ILIKE <tx description_clean>`
+### 5a — Fuzzy match lookup
 
-   If a match exists → skip silently, count as "skipped"
-2. **Insert** the row using `INSERT ... ON CONFLICT DO NOTHING`
-3. Track: inserted count, skipped count, failed count (with error messages)
+Query `transactions` for a potential existing record:
+
+```sql
+SELECT id, description_clean, description_raw, account_id,
+       counterpart_name, counterpart_bank, bank_reference,
+       category_slug, notes, date, amount
+FROM transactions
+WHERE amount = <tx amount>
+  AND date BETWEEN <tx date - 1 day> AND <tx date + 1 day>
+  AND description_clean ILIKE '%<first meaningful word of tx description_clean>%'
+LIMIT 1;
+```
+
+- Allow ±1 day on date because boleta date (purchase) may differ from bank notification date (processing).
+- If no match: **insert** (go to 5c).
+- If match found: **enrich** (go to 5b).
+
+### 5b — Enrich existing record (match found)
+
+Build an `UPDATE` payload with these rules per field:
+
+| Field | Rule |
+|---|---|
+| `description_clean` | **Email wins.** Replace with email's value — OCR misreads merchant names. |
+| `description_raw` | **Append only.** Set to `<original> \| email: <email's description_raw>` so both sources are preserved. Skip if email's raw is already contained. |
+| `account_id` | **Email wins if existing is NULL.** Email knows which card/account; don't overwrite a manually-set value. |
+| `counterpart_name` | **Email wins if existing is NULL.** |
+| `counterpart_bank` | **Email wins if existing is NULL.** |
+| `bank_reference` | **Email wins if existing is NULL.** |
+| `transaction_type` | **Email wins if existing is NULL** or was inferred as `"expense"` generically. |
+| `category_slug` | **Never overwrite.** User may have manually corrected it. |
+| `date` | **Never overwrite.** Keep the boleta/original date. |
+| `amount` | **Never overwrite.** If amounts differ by >2%, log a warning in the sync status but don't change the record. |
+| `notes` | **Append only.** Add `\| gmail_enriched \| subject: <email subject>` to existing notes. Never remove prior notes. |
+
+Only include fields that actually changed in the UPDATE (skip no-op updates).
+
+After updating, count as **"enriched"** (not skipped, not inserted).
+
+### 5c — Insert new record
+
+If no fuzzy match was found, insert the full row:
+
+```sql
+INSERT INTO transactions (...) VALUES (...) ON CONFLICT DO NOTHING;
+```
+
+### 5d — Track counts
+
+- **inserted:** new records added
+- **enriched:** existing records updated with email data
+- **skipped:** true duplicates where email added nothing new (all fields already matched)
+- **flagged:** amount mismatch >2% between email and existing record (log both amounts)
+- **failed:** insert/update errors (log error message)
 
 ---
 
@@ -143,10 +191,12 @@ Append to the routine output (visible in run logs at claude.ai/code/routines):
 ```
 ### 🗄️ Sync Status
 - ✅ X inserted
-- ⏭️ X skipped (duplicates)
+- 🔄 X enriched (existing records corrected/completed with email data)
+- ⏭️ X skipped (true duplicates, nothing new to add)
+- ⚠️ X flagged (amount mismatch >2% — review manually)
+  - <date> | <description_clean> | existing: $X | email: $Y
 - ❌ X failed
   - <error message 1>
-  - <error message 2>
 - 📲 Telegram push: ✅ sent / ❌ failed
 ```
 
