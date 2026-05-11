@@ -6,7 +6,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from dotenv import load_dotenv
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 
-from handlers import file_handler, text_handler, cta_handler, liquidacion_handler
+from handlers import file_handler, text_handler, cta_handler, edit_handler, liquidacion_handler
 
 
 logging.basicConfig(
@@ -57,6 +57,9 @@ def build_application() -> Application:
 
     # /liquidacion — activates liquidacion mode for the next file upload
     application.add_handler(CommandHandler("liquidacion", liquidacion_handler.handle_liquidacion_command))
+
+    # /editar — correct a field on the last uploaded transactions
+    application.add_handler(CommandHandler("editar", edit_handler.handle_edit_command))
 
     # File handlers — CTA / liquidacion modes take priority when active
     application.add_handler(MessageHandler(filters.PHOTO, file_handler.handle_photo))

@@ -38,7 +38,7 @@ description: >
 | Comma-decimal (rare) | `$1.234,56` = 1234.56 CLP. Only relevant for non-CLP currencies. |
 | Sign convention | **Expenses → NEGATIVE** (e.g., `-12230`). Income / transfers-in → **POSITIVE**. |
 | `amount = 0` | Blocked by `chk_nonzero_amount` constraint. Sanitize before insert. |
-| Duplicates | Check `transaction_date + amount + description_clean` before insert. Skip silently if exists. |
+| Duplicates | Fuzzy match on `amount + date(±1d) + description_clean`. If found → enrich existing record with email data (see `references/gmail-sync.md` Step 5). Only skip if nothing new to add. |
 | Unknown account | Set `account_id = NULL`. Don't invent. |
 | `is_mine` filter | In analysis queries, always `WHERE accounts.is_mine = true`. |
 
