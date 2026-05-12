@@ -53,7 +53,7 @@ For each transaction, build a row matching the schema in `SKILL.md`:
   "category_slug": "transport",
   "account_id": "<uuid from ACCOUNT_MAP / CTA_ACCOUNT_MAP, or null>",
   "transaction_type": "expense",
-  "notes": "source: gmail_routine | subject: <email subject> | <extra context>",
+  "notes": "source: gmail_routine | subject: <email subject> | email: https://mail.google.com/mail/u/0/#all/<message_id> | <extra context>",
   "counterpart_name": null,
   "counterpart_rut": null,
   "counterpart_bank": null,
@@ -137,7 +137,7 @@ Build an `UPDATE` payload with these rules per field:
 | `category_slug` | **Never overwrite.** User may have manually corrected it. |
 | `date` | **Never overwrite.** Keep the boleta/original date. |
 | `amount` | **Never overwrite.** If amounts differ by >2%, log a warning in the sync status but don't change the record. |
-| `notes` | **Append only.** Add `\| gmail_enriched \| subject: <email subject>` to existing notes. Never remove prior notes. |
+| `notes` | **Append only.** Add `\| gmail_enriched \| subject: <email subject> \| email: https://mail.google.com/mail/u/0/#all/<message_id>` to existing notes. Never remove prior notes. |
 
 Only include fields that actually changed in the UPDATE (skip no-op updates).
 
@@ -205,7 +205,7 @@ Append to the routine output (visible in run logs at claude.ai/code/routines):
 ## Edge cases / gotchas
 
 - **Banco de Chile credit card emails:** sometimes amount appears in body as "Por un monto de $X.XXX" — the dot-thousand-separator rule applies.
-- **Cuotas (installments):** Email like "Cuota 3/12 - Falabella". Use `transaction_type: "expense"`, add `notes: "source: gmail_routine | subject: <email subject> | cuota 3/12"`.
+- **Cuotas (installments):** Email like "Cuota 3/12 - Falabella". Use `transaction_type: "expense"`, add `notes: "source: gmail_routine | subject: <email subject> | email: https://mail.google.com/mail/u/0/#all/<message_id> | cuota 3/12"`.
 - **Tenpo cashback:** if literally "Recibiste $X de cashback" with no actual abono, **skip**. If it's an "Abono cashback" line in a cartola, count as `transfer_in`.
 - **Refunds / reversiones:** use `transaction_type: "transfer_in"` with positive amount; mention "reversión" in notes.
 - **MercadoPago notifications:** often duplicate (one for the buyer, one for the wallet). Dedupe carefully on amount + description.
