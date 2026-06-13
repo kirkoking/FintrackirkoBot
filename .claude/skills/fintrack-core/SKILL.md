@@ -37,6 +37,7 @@ description: >
 | Chilean amount format | `$118.137` = **118137 CLP**. Dot is thousand separator, NOT decimal. Always strip `$`/`CLP`/spaces, remove `.`, parse as int. |
 | Comma-decimal (rare) | `$1.234,56` = 1234.56 CLP. Only relevant for non-CLP currencies. |
 | Sign convention | **Expenses → NEGATIVE** (e.g., `-12230`). Income / transfers-in → **POSITIVE**. |
+| ⚠️ Cartola CC sign — READ THE COLUMN, not the verb | In **Banco de Chile** cuenta-corriente cartolas, lines `PAGO:…` (incl. **`PAGO:PROVEEDORES`**, `PAGO:DEV IMPUESTO`), `TRASPASO DE:`, `TRANSFERENCIA DESDE` are **ABONOS → POSITIVE** (income / transfer_in). Lines `TRASPASO A:`, `CARGO …`, `PAGO TC`, `AMORTIZACION A` are **CARGOS → NEGATIVE**. `PAGO:PROVEEDORES` *looks* like an outflow but is an **inflow** (reembolsos/subsidios via convenio). **Always reconcile against the cartola's `TOTAL CARGOS` / `TOTAL ABONOS` totals before inserting.** Full bank-by-bank quirks → `references/cartola-parsing.md`. |
 | `amount = 0` | Blocked by `chk_nonzero_amount` constraint. Sanitize before insert. |
 | Duplicates | Fuzzy match on `amount + date(±1d) + description_clean`. If found → enrich existing record with email data (see `references/gmail-sync.md` Step 5). Only skip if nothing new to add. |
 | Unknown account | Set `account_id = NULL`. Don't invent. |
