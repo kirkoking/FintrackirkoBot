@@ -37,10 +37,13 @@ Line prefixes and their direction:
 | `TRANSFERENCIA DESDE LINEA DE CREDITO` | IN | credit-line draw (POSITIVE) — internal plumbing |
 | `SALDO INICIAL / SALDO FINAL` | — | running balance, NOT a transaction — skip |
 
-**Known convenios (biller IDs) seen on Kirk's account:**
-- `0762966190` → **Colmena** reembolsos médicos (e.g. $46.138). Cross-check against email "Reembolso Web COLMENA" notices — the cartola line is the *deposit landing* of an already-approved reembolso → **associate/merge, don't double-count**.
-- `0965014500` → **licencia médica** subsidio (e.g. $1.505.419 = 2-week leave). This is **income** (replacement pay), not a medical expense.
-- `0765074436` → unidentified abono — ask Kirk.
+**Known convenios (biller IDs) seen on Kirk's account** — all are INFLOWS (abonos):
+- `0762966190` → **Colmena** reembolsos médicos. Cross-check vs email "Reembolso Web COLMENA" (`noresponder@colmena.cl`); the cartola line is the *deposit landing* of an already-approved reembolso → **associate/merge, don't double-count**.
+- `0965014500` → **licencia médica** subsidio (Compin), e.g. $1.505.419 = 2-week leave. **Income** (replacement pay), NOT a medical expense.
+- `0765074436` → **Cruz Blanca** reembolsos médicos ambulatorios (varied, incl. large like $566.464). Cross-check vs "Solicitud/Autorización de Reembolso Ambulatorio" from `CanalWebSolicReem@cruzblanca.cl` / `informativo.cruzblanca@cruzblanca.cl`. `transfer_in`.
+
+### 🔎 Context lookup — when a movement is unclear, SEARCH GMAIL before guessing
+Before classifying an unknown convenio / counterparty / big amount, **search Gmail** for the **amount** (Chilean format `123.456`), the **counterparty name**, or the **date** to find the matching notice (reembolso, transferencia, boleta). Senders worth checking: `noresponder@colmena.cl`, `*@cruzblanca.cl`, `serviciodetransferencias@bancochile.cl`, `pagos@encuadrado.com` (teleconsultas médicas). Only ask Kirk if Gmail turns up nothing. *(Kirk's request — let the system self-serve context instead of asking.)*
 
 **Línea de crédito plumbing:** `TRANSFERENCIA DESDE` (draw) + `AMORTIZACION A` (repay) net out and are not real income/expense. Default: record but keep OUT of spending analysis (or skip), per Kirk's call.
 
