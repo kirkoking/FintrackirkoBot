@@ -55,7 +55,7 @@ amount               INT         — CLP, signed (negative=expense)
 currency             TEXT        — default 'CLP'
 category_slug        TEXT        — see slugs below (NEVER Spanish names)
 account_id           UUID        — see account map below; NULL if unknown
-transaction_type     TEXT        — expense | transfer_out | transfer_in | income | payment | fees
+transaction_type     TEXT        — ONLY: expense | transfer_out | transfer_in | income  (DB CHECK rejects anything else — 'payment'/'fees' are category_slugs, NOT transaction_types)
 notes                TEXT        — extra context (cuota number, location, "source: gmail_routine", etc.)
 counterpart_name     TEXT        — for transfers; person/company on the other end
 counterpart_rut      TEXT        — RUT if available
@@ -109,7 +109,21 @@ If unsure → `other`. Never invent slugs. Never use Spanish names.
 | Transferencia enviada a tercero ("TRF A", "TRANSF A", nombre destinatario) | `transfer_out` (NEGATIVE) |
 | Abono recibido ("ABONO", "TRANSFERENCIA DE", "TRANSF DE") | `transfer_in` (POSITIVE) |
 | Sueldo, honorarios, pensión, devolución impuestos | `income` (POSITIVE) |
-| Pago a tu propia TC ("PAGO TC", "PAGO TARJETA") | `payment` (NEGATIVE for the source account) |
+| Pago a tu propia TC ("PAGO TC", "PAGO TARJETA") | type `transfer_out` + category_slug `payment`, NEGATIVE, on the **source** account (NOT on the card). `payment` is a CATEGORY, never a transaction_type. |
+
+---
+
+## 🧾 Boletas, dedup & medical claims
+
+**Boletas (receipts):** record **ONE transaction per boleta = the total** (matches the single card charge / cartola line). Do NOT create one transaction per product — that inflates and double-counts. Put line-item detail in `receipts.items` (jsonb) linked to the transaction. *(Kirk's explicit ask.)*
+
+**Dedup — card data is often DOUBLED.** Card purchases frequently land **twice** (two import sources with slightly different `description_clean`/`description_raw`, so the exact-hash trigger misses them). When a cartola exists it is the **source of truth** — reconcile DB counts to it: delete the excess, keep the most-descriptive row, and fold the other's description into `merge_notes` (keep all info, 1 source of truth). **Never delete without Kirk's "sí, bórralo".**
+- ⚠️ **Hash limitation:** `transactions.hash` UNIQUE blocks truly-identical charges (same date/amount/desc/account). If a real day has N identical charges (e.g. 4× Anthropic API same day), only ones with differing `description_raw` can be stored. Vary `description_raw` to store legit repeats, else flag as under-counted.
+
+**Medical reembolsos → `medical_claims` table.** Colmena/Cruz Blanca comprobantes = `gasto_medico` rows (prestador, monto_total, monto_reembolsado, isapre, estado, fecha_pago_reembolso, referencia=folio). The bank abono is the *deposit* of an already-recorded claim → **associate, don't double-count**. Convenios: `0762966190`=Colmena · `0765074436`=Cruz Blanca · `0965014500`=subsidio licencia (Compin, income). Goal: verify each gasto médico passes the cascade **isapre Colmena → seguro complementario Consorcio → seguros adicionales (UC urgencias/diagnóstico)**.
+
+## 🚫 Exclusions — do NOT ingest
+- Sender `aguascordilleraadmin_dte@paperless.cl` / address **"República Árabe de Egipto 280"** = Kirk's OLD apartment (moved out). Skip those boletas/cuentas entirely.
 
 ---
 
